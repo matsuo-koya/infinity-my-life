@@ -483,6 +483,22 @@ function fin1965(b, i, ctx) {
   return w;
 }
 
+/* 終止の小節 ───────────────────────────────
+   走句で埋める音型は、第16小節まで走りつづけると
+   フレーズの途中で紙が終わってしまう。最後の1小節だけは
+   走るのをやめて、主和音を置いて閉じる。
+   （終曲だけは例外。あとにコーダが続くので、走ったまま渡す） */
+function closing(b, T) {
+  const w = newBar(T);
+  const pcs = CHORDS[b.chord].pcs;                 /* 第16小節はいつも主和音 */
+  /* 和音の構成音を下から3つ積む。適当な高さに寄せると第3音が抜けて
+     空虚五度になり、長調で終わった気がしない */
+  put(w, 1, 0, 0, T, ladder(pcs, 64, 3, 1, 60, 84));
+  const bass = snap(pcs, 45, 0);
+  put(w, 0, 0, 0, T, [bass, bass + 12]);
+  return w;
+}
+
 /* コーダ。主音の上でひと息ついて閉じる */
 function coda(skel, era, scale) {
   const T = era === "1965" ? M44 : TPE * 6;
@@ -490,10 +506,10 @@ function coda(skel, era, scale) {
   const mk = (pcs, bass, last) => {
     const w = newBar(T);
     if (last) {
-      /* 締めの小節。両手とも1小節まるごと伸ばす */
-      const top = snap(pcs, 73, 0);
-      put(w, 1, 0, 0, T, [top, top - 12, snap(pcs, 64, 0)]);
-      put(w, 0, 0, 0, T, [bass, bass + 12]);
+      /* 締めの小節。両手とも1小節まるごと伸ばす。
+         こちらも第3音を落とさないよう、構成音を積んで作る */
+      put(w, 1, 0, 0, T, ladder(pcs, 64, 4, 1, 60, 86));
+      put(w, 0, 0, 0, T, [snap(pcs, bass, 0), snap(pcs, bass, 0) + 12]);
       return w;
     }
     const n = T / S16;
@@ -546,9 +562,12 @@ export function build(k, skel, sums) {
   const scale = P.minor ? SCALE_MIN : SCALE_MAJ;
   const ctx = { era: P.era, scale, minor: P.minor, carry: null, carryL: null, echo: null };
   const gen = P.gen[P.era];
+  const T16 = P.era === "1965" ? M44 : M38;
   const bars = skel.map((b, i) => {
     ctx.prev = skel[i - 1];
     ctx.cadence = i === 7 || i === 15;
+    /* 終曲はあとにコーダが続くので、そのまま走らせる */
+    if (i === 15 && P.key !== "finale") return closing(b, T16);
     return gen(b, i, ctx);
   });
 
