@@ -1,0 +1,26 @@
+Salamander Grand Piano V3
+=========================
+
+短3度おきに録られた30個の標本（mp3）。88鍵ぶんをこれで賄う。
+
+音源
+  Salamander Grand Piano V3（Yamaha C5 の収録）
+  録音・制作 Alexander Holm
+  https://archive.org/details/SalamanderGrandPianoV3
+
+  ライセンス: CC BY 3.0
+  https://creativecommons.org/licenses/by/3.0/
+
+  ここに置いてあるのは Tone.js が配布している mp3 変換版。
+  https://tonejs.github.io/audio/salamander/
+
+表示について
+  CC BY 3.0 なので、再配布には表示（クレジット）が必要。
+  この機械では画面の脚注と README に記載している。
+  フォークする場合もこの表示を残すこと。
+
+  取り直すには `npm run fetch:salamander`。
+
+なお実物は現代のコンサート・グランドであり、1787年の音ではない。
+同梱のフォルテピアノ合成（A. Walter, Wien c.1785 を目安）と
+聴きくらべるために置いてある。
