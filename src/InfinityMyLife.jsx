@@ -67,6 +67,7 @@ export default function InfinityMyLife() {
   const [playBar, setPlayBar] = useState(-1);
   const [mv, setMv] = useState(0);
   const [perpetual, setPerpetual] = useState(false);
+  const [loopMv, setLoopMv] = useState(null);       /* この楽章だけを振り直しつづける */
   const [showing, setShowing] = useState(false);
   const [recording, setRecording] = useState(false);
   const [recNote, setRecNote] = useState("");
@@ -95,6 +96,7 @@ export default function InfinityMyLife() {
   const cfg = useRef({});
   cfg.current = { inst, temp, a4, barSec, repeat, human, period, room, wet, tape };
   const perpRef = useRef(false); perpRef.current = perpetual;
+  const loopRef = useRef(null); loopRef.current = loopMv;
 
   useEffect(() => {
     const l = document.createElement("link");
@@ -192,7 +194,7 @@ export default function InfinityMyLife() {
 
   const clearAll = useCallback(() => {
     sumsRef.current = [];
-    setSums([]); setDice([0, 0]); setLine(OPENING); setMv(0);
+    setSums([]); setDice([0, 0]); setLine(OPENING);
     history.replaceState(null, "", location.pathname + location.search);
   }, []);
 
@@ -395,6 +397,26 @@ export default function InfinityMyLife() {
     try { await runSet(() => showBusy.current); }
     finally { showBusy.current = false; setBusy(false); }
   }, [runSet]);
+
+  /* ひとつの楽章だけを、賽を振り直しながら延々と作りつづける。
+     第4変奏（動機・モルデント・走り下り・左右交互）でいちばん効く */
+  useEffect(() => {
+    if (loopMv == null || showBusy.current) return;
+    let alive = true;
+    (async () => {
+      while (alive && loopRef.current != null) {
+        clearAll();
+        setMv(loopRef.current);
+        await sleep(260);
+        for (let i = 0; i < BARS && alive && loopRef.current != null; i++) { await tumbleOnce(); await sleep(110); }
+        if (!alive || loopRef.current == null) return;
+        await sleep(620);
+        await playAndWait();
+        await sleep(700);
+      }
+    })();
+    return () => { alive = false; };
+  }, [loopMv, clearAll, tumbleOnce, playAndWait]);
 
   useEffect(() => {
     if (!perpetual || showBusy.current) return;
@@ -655,7 +677,14 @@ export default function InfinityMyLife() {
             </button>
             <button onClick={() => runShow(false)} disabled={busy} style={S.btn(showing && !recording, busy)}>上演</button>
             <button onClick={() => runShow(true)} disabled={busy} style={S.btn(recording, busy)}>● 録画</button>
-            <button onClick={() => setPerpetual((v) => !v)} disabled={busy && !perpetual} style={S.btn(perpetual, busy && !perpetual)}>永久機関</button>
+            <button onClick={() => { setLoopMv(null); setPerpetual((v) => !v); }}
+              disabled={(busy && !perpetual) || loopMv != null}
+              style={S.btn(perpetual, (busy && !perpetual) || loopMv != null)}>永久機関</button>
+            <button onClick={() => { setPerpetual(false); setLoopMv((v) => (v == null ? 4 : null)); }}
+              disabled={busy && loopMv == null}
+              style={S.btn(loopMv != null, busy && loopMv == null)}>
+              第4変奏を振り続ける
+            </button>
             <div style={{ flex: 1 }} />
             <button onClick={() => setTape((v) => !v)} style={S.btn(tape)}>半速録音</button>
             <button onClick={() => setRepeat((v) => !v)} style={S.btn(repeat)}>反復</button>
