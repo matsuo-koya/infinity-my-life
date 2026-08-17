@@ -87,17 +87,25 @@ function run4(pcs, scale, from, dir) {
   const d = stepScale(scale, c, dir);
   return [a, b, c, d];
 }
-/* n個ぶん続けて走る。天井と床で向きを変える */
-function runLine(pcs, scale, from, n, dir0 = 1) {
-  const out = []; let m = from, dir = dir0;
-  while (out.length < n) {
-    if (m > HIGH - 4) dir = -1;
-    if (m < 62) dir = 1;
-    const g = run4(pcs, scale, m, dir);
-    out.push(...g);
-    m = stepScale(scale, g[3], dir);
+/* n個ぶん続けて走る。天井と床で向きを変える。
+   音域は手ごとに違うので外から渡す。ここで畳んでしまうと
+   走句の途中にオクターヴの跳躍が生まれて、足取りが崩れる */
+function runLine(pcs, scale, from, n, dir0 = 1, lo = 60, hi = HIGH) {
+  const out = [];
+  let m = snapScale(scale, Math.max(lo + 2, Math.min(hi - 2, from)));
+  let dir = dir0;
+  /* 1音ずつ進み、端に着く手前で向きを変える。
+     あとから畳むとオクターヴの跳躍が混ざって足取りが崩れるので、
+     はみ出させないほうを選ぶ */
+  for (let i = 0; i < n; i++) {
+    out.push(m);
+    /* 和声音と経過音を交互に踏むのがバロックの走句 */
+    let nx = (i % 2 === 0) ? stepScale(scale, m, dir) : step(pcs, m, dir);
+    if (nx > hi || nx < lo) { dir = -dir; nx = stepScale(scale, m, dir); }
+    if (nx > hi || nx < lo) nx = m;
+    m = nx;
   }
-  return out.slice(0, n).map((m) => fit(m, 55, HIGH));
+  return out;
 }
 
 /* ─── 音型それぞれ ───────────────────────────────
@@ -144,7 +152,7 @@ function run1965(b, i, ctx) {
   const pcs = CHORDS[b.chord].pcs;
   /* 前の小節の終わりから続ける。切れ目をつくらないのが1965の側の肝 */
   const from = ctx.carry ?? b.mel[0];
-  const line = runLine(pcs, ctx.scale, from, 16, i % 2 ? 1 : -1);
+  const line = runLine(pcs, ctx.scale, from, 16, i % 2 ? 1 : -1, 60, HIGH);
   for (let k = 0; k < 4; k++)
     beam(line.slice(k * 4, k * 4 + 4).map((m, j) => put(w, 1, 0, (k * 4 + j) * S16, S16, [m])));
   ctx.carry = stepScale(ctx.scale, line[15], 1);
@@ -169,13 +177,15 @@ function seq1965(b, i, ctx) {
   const w = newBar(M44);
   const pcs = CHORDS[b.chord].pcs;
   /* 4音の型を、1小節に4回。上へ下へと一段ずつずらす */
-  let m = ctx.carry ?? b.mel[0];
+  /* 型が音域から出ないよう、起点そのものを内側に留める。
+     畳んでしまうと続進の足取りにオクターヴの段差が入る */
+  let m = Math.max(60, Math.min(76, ctx.carry ?? b.mel[0]));
   for (let k = 0; k < 4; k++) {
     const dir = k % 2 ? -1 : 1;
-    const g = [snap(pcs, m, 0), step(pcs, m, 1), snap(pcs, m, 0), stepScale(ctx.scale, m, -1)]
-      .map((x) => fit(x, 55, HIGH));
-    beam(g.map((x, j) => put(w, 1, 0, (k * 4 + j) * S16, S16, [x])));
-    m = stepScale(ctx.scale, m, dir === 1 ? 1 : -1);
+    const g = [snap(pcs, m, 0), step(pcs, m, 1), snap(pcs, m, 0), stepScale(ctx.scale, m, -1)];
+    beam(g.map((x, j) => put(w, 1, 0, (k * 4 + j) * S16, S16, [Math.max(55, Math.min(HIGH, x))])));
+    const nx = stepScale(ctx.scale, m, dir);
+    m = nx > 78 || nx < 58 ? stepScale(ctx.scale, m, -dir) : nx;
   }
   ctx.carry = m;
   sparse(w, pcs, b.bassMidi);
@@ -198,8 +208,7 @@ function left1787(b, i, ctx) {
 function left1965(b, i, ctx) {
   const w = newBar(M44);
   const pcs = CHORDS[b.chord].pcs;
-  const line = runLine(pcs, ctx.scale, ctx.carryL ?? b.bassMidi + 12, 16, 1)
-    .map((m) => fit(m, 38, 64));
+  const line = runLine(pcs, ctx.scale, ctx.carryL ?? b.bassMidi + 12, 16, 1, 40, 64);
   for (let k = 0; k < 4; k++)
     beam(line.slice(k * 4, k * 4 + 4).map((m, j) => put(w, 0, 0, (k * 4 + j) * S16, S16, [m])));
   ctx.carryL = line[15];
@@ -214,8 +223,9 @@ function left1965(b, i, ctx) {
    走り下り（ランダウン）と組み合わさる。しかもそれを左右の手で
    交互に受け渡す。だから1曲のあいだ耳が飽きない。
 
-   主動機は「ミレミドレドドレ」。音階度でいうと 3 2 3 1 2 1 1 2 で、
-   隣の音へ行って戻る揺れを二度置いてから、一段下りて落ち着く形。
+   主動機は「ミレミドレドレ」。音階度でいうと 3 2 3 1 2 1 2 で、
+   隣の音へ行って戻る揺れを置き、一段下りて、また揺れる形。
+   七つで一区切りという半端な長さが、かえって前へ進む力になる。
    バロックの手鍵盤ものによく出る足取りでもある。
 
    小節ごとに身ぶりを取り替える。
@@ -225,25 +235,36 @@ function left1965(b, i, ctx) {
      ④ 左右交互（4つずつ受け渡す）
    終止の小節（8と16）では必ずトリルにする。古典派の作法でもある */
 
-/* ミレミドレドドレ。起点の音からの音階度 */
-const MOTIF = [2, 1, 2, 0, 1, 0, 0, 1];
+/* ミレミドレドレ。起点の音からの音階度 */
+const MOTIF = [2, 1, 2, 0, 1, 0, 1];
 
+/* いちばん近い音階音。動機の起点は音階の上に載っていないといけない */
+function snapScale(scale, m) {
+  for (let d = 0; d < 7; d++) {
+    if (inSet(scale, m - d)) return m - d;
+    if (inSet(scale, m + d)) return m + d;
+  }
+  return m;
+}
 /* 音階を n 段のぼった音 */
 function degAbove(scale, from, n) {
-  let m = from;
+  let m = snapScale(scale, from);
   for (let i = 0; i < n; i++) m = stepScale(scale, m, 1);
   return m;
 }
 /* 音階を dir 向きに n 個。走り下りの中身 */
 function scaleRun(scale, from, n, dir) {
-  const out = [from];
-  for (let i = 1; i < n; i++) out.push(stepScale(scale, out[i - 1], dir));
-  return out.map((m) => fit(m, 55, HIGH));
+  const out = [snapScale(scale, from)];
+  for (let i = 1; i < n; i++) {
+    const nx = stepScale(scale, out[i - 1], dir);
+    out.push(nx < 52 || nx > HIGH ? out[i - 1] : nx);      /* 端では畳まず留まる */
+  }
+  return out;
 }
-/* 4つずつ束ねて置く */
-function lay(w, staff, base, notes, from = 0) {
-  for (let k = 0; k < notes.length; k += 4)
-    beam(notes.slice(k, k + 4).map((m, j) => put(w, staff, 0, base + (from + k + j) * S16, S16, [m])));
+/* 拍に合わせて束ねる。4/4は4つずつ、3/8は6つまとめて（原典の作法） */
+function lay(w, staff, base, notes, from = 0, group = 4) {
+  for (let k = 0; k < notes.length; k += group)
+    beam(notes.slice(k, k + group).map((m, j) => put(w, staff, 0, base + (from + k + j) * S16, S16, [m])));
 }
 
 function varied(b, i, ctx) {
@@ -256,37 +277,37 @@ function varied(b, i, ctx) {
   const g = ctx.cadence ? 1 : i % 4;
   const top = snap(pcs, Math.max(b.mel[0], 69), 0);
 
+  const group = wide ? 4 : 6;
   if (g === 0) {
-    /* ① 動機、そのあと走り下り */
+    /* ① 動機、そのあと走り下り。つないでから拍で束ねる */
     const startDeg = fit(top - 4, 62, 76);
-    const cell = MOTIF.slice(0, Math.min(8, n16)).map((d) => degAbove(scale, startDeg, d));
-    lay(w, 1, 0, cell);
-    if (n16 > cell.length) {
-      const rest = scaleRun(scale, stepScale(scale, cell[cell.length - 1], 1), n16 - cell.length, -1);
-      lay(w, 1, 0, rest, cell.length);
-      ctx.carry = rest[rest.length - 1];
-    } else ctx.carry = cell[cell.length - 1];
+    const cell = MOTIF.slice(0, Math.min(MOTIF.length, n16)).map((d) => degAbove(scale, startDeg, d));
+    /* 走り下りは高いところから。低い側で折り返さずに降りきる高さに置く */
+    const tail = n16 > cell.length
+      ? scaleRun(scale, fit(cell[0] + 12, 74, HIGH), n16 - cell.length, -1) : [];
+    lay(w, 1, 0, [...cell, ...tail], 0, group);
+    ctx.carry = (tail.length ? tail : cell)[(tail.length ? tail : cell).length - 1];
   } else if (g === 1) {
     /* ② トリル、残りを走句で埋める */
     const hold = wide ? TPE * 4 : TPE * 2;
     put(w, 1, 0, 0, hold, [top], { orn: "trill" });
     const n = (T - hold) / S16;
-    const line = runLine(pcs, scale, stepScale(scale, top, -1), n, -1);
-    lay(w, 1, hold, line);
+    const line = runLine(pcs, scale, stepScale(scale, top, -1), n, -1, 60, HIGH);
+    lay(w, 1, hold, line, 0, group);
     ctx.carry = line[n - 1];
   } else if (g === 2) {
     /* ③ 走り下り。高いところから駆け下りる */
     const line = scaleRun(scale, fit(top + (wide ? 12 : 7), 66, HIGH), n16, -1);
-    lay(w, 1, 0, line);
+    lay(w, 1, 0, line, 0, group);
     ctx.carry = line[n16 - 1];
   } else {
     /* ④ 左右交互。動機を4つ（3/8なら3つ）ずつ受け渡す */
     const chunk = wide ? 4 : 3;
     const groups = n16 / chunk;
+    const cell = MOTIF.map((d) => degAbove(scale, fit(top - 4, 62, 76), d));
     const src = wide
-      ? MOTIF.map((d) => degAbove(scale, fit(top - 4, 62, 76), d))
-          .concat(scaleRun(scale, top, 8, -1))
-      : MOTIF.slice(0, 6).map((d) => degAbove(scale, fit(top - 4, 62, 76), d));
+      ? cell.concat(scaleRun(scale, stepScale(scale, cell[cell.length - 1], 1), n16 - cell.length, -1))
+      : cell.slice(0, n16);
     for (let k = 0; k < groups; k++) {
       const right = k % 2 === 0;
       const staff = right ? 1 : 0;
@@ -307,6 +328,72 @@ function varied(b, i, ctx) {
   return w;
 }
 
+/* フガート ───────────────────────────────
+   「ミレミドレドドレ」は主題としてよくできている。順次進行で覚えやすく、
+   一段ずらしても、上下ひっくり返しても形が保たれる。
+   そこで二声のフガートにする。右手が主題を出し、左手が四度下で答え、
+   その間じゅう反対の手は対主題（走句）を弾きつづける。
+
+   マーティンが真似ていたのはバッハで、この機械が拾ったのもバッハだった。
+   まわり道をして同じところへ出た、ということだと思う */
+
+function fugato(b, i, ctx) {
+  const wide = ctx.era === "1965";
+  const T = wide ? M44 : M38;
+  const n16 = T / S16;
+  const w = newBar(T);
+  const pcs = CHORDS[b.chord].pcs;
+  const scale = ctx.scale;
+  const sub = Math.min(MOTIF.length, n16);            /* 主題の長さ。七つ */
+  const group = wide ? 4 : 6;
+  const phase = i % 4;
+
+  /* その手を、主題／対主題／休みのどれにするか */
+  const RANGE = { 1: [60, HIGH], 0: [40, 64] };
+  /* 主題を出し、余りを対主題で埋める。つないでから拍で束ねる */
+  const entry = (staff, start) => {
+    const [lo, hi] = RANGE[staff];
+    const cell = MOTIF.slice(0, sub).map((d) => degAbove(scale, start, d));
+    const n = n16 - cell.length;
+    const tail = n > 0
+      ? runLine(pcs, scale, stepScale(scale, cell[cell.length - 1], staff ? -1 : 1), n, staff ? -1 : 1, lo, hi)
+      : [];
+    lay(w, staff, 0, [...cell, ...tail], 0, group);
+    return (tail.length ? tail : cell)[(tail.length ? tail : cell).length - 1];
+  };
+  const counter = (staff, seed) => {
+    const [lo, hi] = RANGE[staff];
+    const line = runLine(pcs, scale, seed, n16, staff ? -1 : 1, lo, hi);
+    lay(w, staff, 0, line, 0, group);
+    return line[n16 - 1];
+  };
+  /* 休符。付点になる長さは割って書く */
+  const hush = (staff, at, len) => {
+    if (len === S16 * 3) { put(w, staff, 0, at, TPE, []); put(w, staff, 0, at + TPE, S16, []); }
+    else put(w, staff, 0, at, len, []);
+  };
+
+  const head = snapScale(scale, snap(pcs, fit(b.mel[0] - 4, 64, 76), 0));
+  /* 応答は四度下（五度上の1オクターヴ下）。主題が天井に当たらない高さに置く */
+  const low = snapScale(scale, Math.max(45, Math.min(56, degAbove(scale, head, 4) - 12)));
+
+  if (phase === 0) {
+    /* 提示。右手だけが主題を出す */
+    entry(1, head);
+    hush(0, 0, T);
+  } else if (phase === 1) {
+    /* 応答。左手が四度下で入り、右手は対主題を続ける */
+    entry(0, low);
+    counter(1, ctx.carry ?? head);
+  } else {
+    /* 嬉遊部。両手が反対向きに走る */
+    counter(1, ctx.carry ?? head);
+    counter(0, low);
+  }
+  ctx.carry = head;
+  return w;
+}
+
 /* 同主短調。イ短調へ */
 function minore(b, i, ctx) {
   const era = ctx.era;
@@ -316,7 +403,7 @@ function minore(b, i, ctx) {
   const isDom = base.name === "E" || base.name === "E7" || base.name === "B7";
   const pcs = isDom ? base.pcs : base.pcs.map((p) => ((p - base.root + 12) % 12 === 4 ? (p + 11) % 12 : p));
   if (era === "1965") {
-    const line = runLine(pcs, SCALE_MIN, ctx.carry ?? b.mel[0], 16, i % 2 ? 1 : -1);
+    const line = runLine(pcs, SCALE_MIN, ctx.carry ?? b.mel[0], 16, i % 2 ? 1 : -1, 60, HIGH);
     for (let k = 0; k < 4; k++)
       beam(line.slice(k * 4, k * 4 + 4).map((m, j) => put(w, 1, 0, (k * 4 + j) * S16, S16, [m])));
     ctx.carry = line[15];
@@ -353,7 +440,7 @@ function fin1787(b, i, ctx) {
 function fin1965(b, i, ctx) {
   const w = newBar(M44);
   const pcs = CHORDS[b.chord].pcs;
-  const line = runLine(pcs, ctx.scale, ctx.carry ?? b.mel[0], 16, 1);
+  const line = runLine(pcs, ctx.scale, ctx.carry ?? b.mel[0], 16, 1, 60, HIGH);
   for (let k = 0; k < 4; k++)
     beam(line.slice(k * 4, k * 4 + 4).map((m, j) => put(w, 1, 0, (k * 4 + j) * S16, S16, [m])));
   ctx.carry = stepScale(ctx.scale, line[15], 1);
@@ -385,7 +472,7 @@ function coda(skel, era, scale) {
       return w;
     }
     const n = T / S16;
-    const line = runLine(pcs, scale, 64, n, 1);
+    const line = runLine(pcs, scale, 64, n, 1, 58, 84);
     for (let k = 0; k < n / 4; k++)
       beam(line.slice(k * 4, k * 4 + 4).map((m, j) => put(w, 1, 0, (k * 4 + j) * S16, S16, [m])));
     put(w, 0, 0, 0, T / 2, [bass]);
@@ -403,7 +490,8 @@ export const MOVEMENTS = [
   { key: "seq", ja: "第2変奏", note: "続進", tempo: 1.02, gen: { "1787": seq1787, "1965": seq1965 } },
   { key: "left", ja: "第3変奏", note: "左手へ", tempo: 1.05, gen: { "1787": left1787, "1965": left1965 } },
   { key: "varied", ja: "第4変奏", note: "動機・トリル・走り下り・左右交互", tempo: 1.06, gen: { "1787": varied, "1965": varied } },
-  { key: "minore", ja: "第5変奏", note: "同主短調", tempo: 1.2, gen: { "1787": minore, "1965": minore } },
+  { key: "fugato", ja: "第5変奏", note: "フガート — 四度下の応答", tempo: 1.1, gen: { "1787": fugato, "1965": fugato } },
+  { key: "minore", ja: "第6変奏", note: "同主短調", tempo: 1.2, gen: { "1787": minore, "1965": minore } },
   { key: "finale", ja: "終曲", note: "コーダつき", tempo: 0.66, gen: { "1787": fin1787, "1965": fin1965 } },
 ];
 

@@ -231,8 +231,14 @@ function rest4(ctx, x, y, SP) {
   ctx.restore();
 }
 
+/* 2分休符は第3線の上に載り、全休符は第4線からぶら下がる */
+function restBlock(ctx, x, y, SP, whole) {
+  ctx.fillRect(x - SP * 0.62, whole ? y - SP * 0.5 : y, SP * 1.24, SP * 0.5);
+}
 const drawRest = (ctx, dur, x, y, SP) =>
-  (dur >= 48 ? rest4 : dur >= 24 ? rest8 : rest16)(ctx, x, y, SP);
+  dur >= 192 ? restBlock(ctx, x, y, SP, true)
+    : dur >= 96 ? restBlock(ctx, x, y, SP, false)
+      : (dur >= 48 ? rest4 : dur >= 24 ? rest8 : rest16)(ctx, x, y, SP);
 
 /* 装飾記号 */
 function ornament(ctx, kind, x, y, SP) {
