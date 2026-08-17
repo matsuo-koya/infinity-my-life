@@ -244,15 +244,22 @@ const drawRest = (ctx, dur, x, y, SP) =>
 function ornament(ctx, kind, x, y, SP) {
   ctx.save();
   ctx.translate(x, y);
-  if (kind === "mordent") {
-    /* 短いぎざぎざ。マーティンのソロが終止で見せる身ぶり */
+  if (kind === "mordent" || kind === "trill" || kind === "trill-half") {
+    /* 短いぎざぎざ。一度だけ返す装飾。
+       下へ返すもの（モルデント）には縦棒を通す。上へ返すもの
+       （プラルトリラー）には通さない。長いトリルの tr とは別の記号 */
     const u = SP * 0.42;
     ctx.lineWidth = SP * 0.15; ctx.lineCap = "round"; ctx.lineJoin = "round";
     ctx.beginPath();
     ctx.moveTo(-u * 2, 0); ctx.lineTo(-u, -u * 0.8); ctx.lineTo(0, 0);
     ctx.lineTo(u, -u * 0.8); ctx.lineTo(u * 2, 0);
     ctx.stroke();
-  } else if (kind === "trill" || kind === "trill-half") {
+    if (kind !== "mordent") {
+      ctx.beginPath();
+      ctx.moveTo(0, -u * 0.9); ctx.lineTo(0, u * 0.9);
+      ctx.lineWidth = SP * 0.12; ctx.stroke();
+    }
+  } else if (kind === "long-trill") {
     ctx.font = `italic ${SP * 1.9}px ${F_SERIF}`;
     ctx.textAlign = "center";
     ctx.fillText("tr", 0, 0);

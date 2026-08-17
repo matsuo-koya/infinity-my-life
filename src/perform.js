@@ -11,24 +11,27 @@
 
 import { TPE, M38 as BAR_TICKS } from "./figuration.js";
 
-/* 装飾音を実際の音に開く。原典の記号は tr（全音）・tr（半音）・回音の3種 */
+/* 装飾音を実際の音に開く。
+
+   トリルを長い交替（ミドミドミド…）で開くと、機械の刻みに聞こえてしまう。
+   古典派の短いトリル（プラルトリラー、モルデント）は一度返すだけで、
+   あとは主要音を伸ばす。ミドミー、である。ここでもそうする。
+
+   返す先は音階のひとつ隣。下へ返すのがモルデント、上へ返すのが
+   プラルトリラー。どちらも頭で素早く済ませ、残りは主要音が保つ */
+const FLICK = 0.055;                       /* 返しの一音にかける秒 */
+
 function realize(e, startT, dur) {
   const base = e.notes[e.notes.length - 1].midi;
-  if (e.orn === "trill" || e.orn === "trill-half") {
-    /* 古典派の作法どおり上の音から始める。終わりは主要音で収める */
-    const n = dur >= 0.5 ? 8 : 6;
-    const u = base + (e.orn === "trill-half" ? 1 : 2);
-    const seq = Array.from({ length: n }, (_, i) => (i % 2 === 0 ? u : base));
-    seq[n - 1] = base;
-    return seq.map((m, i) => ({ midi: m, t: startT + (dur * i) / n, dur: dur / n }));
-  }
-  if (e.orn === "mordent") {
-    /* プラルトリラー。主要音・上・主要音を頭で素早く */
-    const u = Math.min(dur * 0.16, 0.075);
+  const aux = e.orn === "mordent" ? base + 2          /* 上へ返す */
+    : e.orn === "trill-half" ? base - 1               /* 半音下へ */
+      : base - 2;                                      /* 下へ返す */
+  if (e.orn === "trill" || e.orn === "trill-half" || e.orn === "mordent") {
+    const u = Math.min(FLICK, dur * 0.22);
     return [
       { midi: base, t: startT, dur: u },
-      { midi: base + 2, t: startT + u, dur: u },
-      { midi: base, t: startT + u * 2, dur: Math.max(0.05, dur - u * 2) },
+      { midi: aux, t: startT + u, dur: u },
+      { midi: base, t: startT + u * 2, dur: Math.max(0.06, dur - u * 2) },
     ];
   }
   if (e.orn === "turn" || e.orn === "turn-inv") {

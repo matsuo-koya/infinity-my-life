@@ -230,10 +230,10 @@ function left1965(b, i, ctx) {
 
    小節ごとに身ぶりを取り替える。
      ① 動機 ＋ 走り下り
-     ② トリル ＋ 走句
+     ② モルデント（一度だけ返す）＋ 走句
      ③ 走り下り
      ④ 左右交互（4つずつ受け渡す）
-   終止の小節（8と16）では必ずトリルにする。古典派の作法でもある */
+   終止の小節（8と16）では必ず装飾を置く。古典派の作法でもある */
 
 /* ミレミドレドレ。起点の音からの音階度 */
 const MOTIF = [2, 1, 2, 0, 1, 0, 1];
@@ -288,7 +288,7 @@ function varied(b, i, ctx) {
     lay(w, 1, 0, [...cell, ...tail], 0, group);
     ctx.carry = (tail.length ? tail : cell)[(tail.length ? tail : cell).length - 1];
   } else if (g === 1) {
-    /* ② トリル、残りを走句で埋める */
+    /* ② 一度だけ返して伸ばし（ミドミー）、残りを走句で埋める */
     const hold = wide ? TPE * 4 : TPE * 2;
     put(w, 1, 0, 0, hold, [top], { orn: "trill" });
     const n = (T - hold) / S16;
@@ -489,7 +489,7 @@ export const MOVEMENTS = [
   { key: "run", ja: "第1変奏", note: "走句", tempo: 1, gen: { "1787": run1787, "1965": run1965 } },
   { key: "seq", ja: "第2変奏", note: "続進", tempo: 1.02, gen: { "1787": seq1787, "1965": seq1965 } },
   { key: "left", ja: "第3変奏", note: "左手へ", tempo: 1.05, gen: { "1787": left1787, "1965": left1965 } },
-  { key: "varied", ja: "第4変奏", note: "動機・トリル・走り下り・左右交互", tempo: 1.06, gen: { "1787": varied, "1965": varied } },
+  { key: "varied", ja: "第4変奏", note: "動機・モルデント・走り下り・左右交互", tempo: 1.06, gen: { "1787": varied, "1965": varied } },
   { key: "fugato", ja: "第5変奏", note: "フガート — 四度下の応答", tempo: 1.1, gen: { "1787": fugato, "1965": fugato } },
   { key: "minore", ja: "第6変奏", note: "同主短調", tempo: 1.2, gen: { "1787": minore, "1965": minore } },
   { key: "finale", ja: "終曲", note: "コーダつき", tempo: 0.66, gen: { "1787": fin1787, "1965": fin1965 } },
