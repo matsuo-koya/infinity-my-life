@@ -257,14 +257,25 @@ function scaleRun(scale, from, n, dir) {
   const out = [snapScale(scale, from)];
   for (let i = 1; i < n; i++) {
     const nx = stepScale(scale, out[i - 1], dir);
-    out.push(nx < 52 || nx > HIGH ? out[i - 1] : nx);      /* 端では畳まず留まる */
+    out.push(nx < 45 || nx > HIGH ? out[i - 1] : nx);      /* 端では畳まず留まる */
   }
   return out;
 }
-/* 拍に合わせて束ねる。4/4は4つずつ、3/8は6つまとめて（原典の作法） */
+/* 拍に合わせて束ねる。4/4は4つずつ、3/8は6つまとめて（原典の作法）。
+   途中から置くときも、束の切れ目は小節の頭から数えた拍の境に合わせる */
 function lay(w, staff, base, notes, from = 0, group = 4) {
-  for (let k = 0; k < notes.length; k += group)
-    beam(notes.slice(k, k + group).map((m, j) => put(w, staff, 0, base + (from + k + j) * S16, S16, [m])));
+  let k = 0;
+  while (k < notes.length) {
+    const abs = from + k;
+    const len = Math.min(group - (abs % group), notes.length - k);
+    beam(notes.slice(k, k + len).map((m, j) => put(w, staff, 0, base + (abs + j) * S16, S16, [m])));
+    k += len;
+  }
+}
+
+/* 休符で埋める。書ける長さに割ってから並べる */
+function restFill(w, staff, at, len) {
+  for (const d of [96, 48, 24, 12]) while (len >= d) { put(w, staff, 0, at, d, []); at += d; len -= d; }
 }
 
 function varied(b, i, ctx) {
@@ -282,11 +293,21 @@ function varied(b, i, ctx) {
     /* ① 動機、そのあと走り下り。つないでから拍で束ねる */
     const startDeg = fit(top - 4, 62, 76);
     const cell = MOTIF.slice(0, Math.min(MOTIF.length, n16)).map((d) => degAbove(scale, startDeg, d));
-    /* 走り下りは高いところから。低い側で折り返さずに降りきる高さに置く */
+    /* 動機のあとの走り下りも、下まで届いたら左手へ渡す */
     const tail = n16 > cell.length
-      ? scaleRun(scale, fit(cell[0] + 12, 74, HIGH), n16 - cell.length, -1) : [];
-    lay(w, 1, 0, [...cell, ...tail], 0, group);
-    ctx.carry = (tail.length ? tail : cell)[(tail.length ? tail : cell).length - 1];
+      ? scaleRun(scale, fit(cell[0] + 12, 72, HIGH), n16 - cell.length, -1) : [];
+    const all = [...cell, ...tail];
+    let cut = all.findIndex((m, k) => k >= cell.length && m < 60);
+    if (cut < 0) cut = all.length;
+    lay(w, 1, 0, all.slice(0, cut), 0, group);
+    if (cut < all.length) {
+      restFill(w, 1, cut * S16, T - cut * S16);
+      restFill(w, 0, 0, cut * S16);
+      lay(w, 0, 0, all.slice(cut).map((m) => m - 12), cut, group);
+      ctx.carry = all[cut - 1];
+      return w;
+    }
+    ctx.carry = all[all.length - 1];
   } else if (g === 1) {
     /* ② 一度だけ返して伸ばし（ミドミー）、残りを走句で埋める */
     const hold = wide ? TPE * 4 : TPE * 2;
@@ -296,10 +317,22 @@ function varied(b, i, ctx) {
     lay(w, 1, hold, line, 0, group);
     ctx.carry = line[n - 1];
   } else if (g === 2) {
-    /* ③ 走り下り。高いところから駆け下りる */
-    const line = scaleRun(scale, fit(top + (wide ? 12 : 7), 66, HIGH), n16, -1);
-    lay(w, 1, 0, line, 0, group);
-    ctx.carry = line[n16 - 1];
+    /* ③ 走り下り。右手が高いところから駆け下り、途中で左手が受け取って
+       さらに下へ抜ける。片手で降りきるより、ずっと遠くまで行ける */
+    /* 出だしの高さ。fit で畳むと下へ落ちてしまうので、ここは頭打ちで留める。
+       両手にほぼ半分ずつ渡るあたりを狙う */
+    const seed = wide ? Math.max(74, Math.min(80, top + 8)) : Math.max(70, Math.min(78, top + 7));
+    const line = scaleRun(scale, seed, n16, -1);
+    let cut = line.findIndex((m) => m < 60);
+    if (cut < 2) cut = Math.ceil(n16 / 2);              /* 短くて跨がないときは真ん中で渡す */
+    const right = line.slice(0, cut);
+    const left = line.slice(cut).map((m) => (m >= 60 ? m - 12 : m));
+    lay(w, 1, 0, right, 0, group);
+    restFill(w, 1, cut * S16, T - cut * S16);
+    restFill(w, 0, 0, cut * S16);
+    lay(w, 0, 0, left, cut, group);
+    ctx.carry = right[right.length - 1];
+    return w;                                           /* 両手が走るので伴奏は置かない */
   } else {
     /* ④ 左右交互。動機を4つ（3/8なら3つ）ずつ受け渡す */
     const chunk = wide ? 4 : 3;
@@ -314,11 +347,8 @@ function varied(b, i, ctx) {
       const notes = src.slice(k * chunk, k * chunk + chunk)
         .map((m) => (right ? fit(m, 62, HIGH) : fit(m - 24, 40, 60)));
       beam(notes.map((m, j) => put(w, staff, 0, (k * chunk + j) * S16, S16, [m])));
-      /* 休んでいるほうの手は、そのぶん休符を置く。
-         3つぶん（付点8分）は書けないので、8分と16分に割る */
-      const rs = right ? 0 : 1, at = k * chunk * S16;
-      if (chunk === 3) { put(w, rs, 0, at, TPE, []); put(w, rs, 0, at + TPE, S16, []); }
-      else put(w, rs, 0, at, chunk * S16, []);
+      /* 休んでいるほうの手は、そのぶん休符を置く */
+      restFill(w, right ? 0 : 1, k * chunk * S16, chunk * S16);
     }
     ctx.carry = src[src.length - 1];
     return w;                              /* この身ぶりでは伴奏を置かない */
@@ -367,11 +397,7 @@ function fugato(b, i, ctx) {
     lay(w, staff, 0, line, 0, group);
     return line[n16 - 1];
   };
-  /* 休符。付点になる長さは割って書く */
-  const hush = (staff, at, len) => {
-    if (len === S16 * 3) { put(w, staff, 0, at, TPE, []); put(w, staff, 0, at + TPE, S16, []); }
-    else put(w, staff, 0, at, len, []);
-  };
+  const hush = (staff, at, len) => restFill(w, staff, at, len);
 
   const head = snapScale(scale, snap(pcs, fit(b.mel[0] - 4, 64, 76), 0));
   /* 応答は四度下（五度上の1オクターヴ下）。主題が天井に当たらない高さに置く */
