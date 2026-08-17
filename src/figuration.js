@@ -210,67 +210,97 @@ function left1965(b, i, ctx) {
 
 /* 多様な奏法 ───────────────────────────────
    マーティンのソロは、同じ音型を延々と繰り返してはいない。
-   トリルが所々に混じり、走り下り（ランダウン）と組み合わさって、
-   1曲のあいだ耳が飽きないようにできている。ここではその方向で、
+   隣の音との小さな揺れから始まる動機があり、トリルが所々に混じり、
+   走り下り（ランダウン）と組み合わさる。しかもそれを左右の手で
+   交互に受け渡す。だから1曲のあいだ耳が飽きない。
+
+   主動機は「ミレミドレドドレ」。音階度でいうと 3 2 3 1 2 1 1 2 で、
+   隣の音へ行って戻る揺れを二度置いてから、一段下りて落ち着く形。
+   バロックの手鍵盤ものによく出る足取りでもある。
+
    小節ごとに身ぶりを取り替える。
-
-     ① 走り下り     高いところから音階で駆け下りる
-     ② トリル       長い音にトリルをかけ、あとを走句で埋める
-     ③ 上行と保続   分散和音で登って、頂点で伸ばす
-     ④ プラルと走句 頭に短いぎざぎざ、そのあと走る
-
+     ① 動機 ＋ 走り下り
+     ② トリル ＋ 走句
+     ③ 走り下り
+     ④ 左右交互（4つずつ受け渡す）
    終止の小節（8と16）では必ずトリルにする。古典派の作法でもある */
 
+/* ミレミドレドドレ。起点の音からの音階度 */
+const MOTIF = [2, 1, 2, 0, 1, 0, 0, 1];
+
+/* 音階を n 段のぼった音 */
+function degAbove(scale, from, n) {
+  let m = from;
+  for (let i = 0; i < n; i++) m = stepScale(scale, m, 1);
+  return m;
+}
 /* 音階を dir 向きに n 個。走り下りの中身 */
 function scaleRun(scale, from, n, dir) {
   const out = [from];
   for (let i = 1; i < n; i++) out.push(stepScale(scale, out[i - 1], dir));
   return out.map((m) => fit(m, 55, HIGH));
 }
+/* 4つずつ束ねて置く */
+function lay(w, staff, base, notes, from = 0) {
+  for (let k = 0; k < notes.length; k += 4)
+    beam(notes.slice(k, k + 4).map((m, j) => put(w, staff, 0, base + (from + k + j) * S16, S16, [m])));
+}
 
 function varied(b, i, ctx) {
   const wide = ctx.era === "1965";
   const T = wide ? M44 : M38;
+  const n16 = T / S16;                     /* 1小節ぶんの16分の数。4/4なら16、3/8なら6 */
   const w = newBar(T);
   const pcs = CHORDS[b.chord].pcs;
   const scale = ctx.scale;
-  const quarter = TPE * 2;
-  /* 終止はトリル、それ以外は4つの身ぶりを順に */
   const g = ctx.cadence ? 1 : i % 4;
   const top = snap(pcs, Math.max(b.mel[0], 69), 0);
 
   if (g === 0) {
-    /* ① 走り下り。高いところから駆け下りる */
-    const n = wide ? 16 : 6;
-    const line = scaleRun(scale, fit(top + (wide ? 12 : 7), 66, HIGH), n, -1);
-    for (let k = 0; k < n; k += 4)
-      beam(line.slice(k, k + 4).map((m, j) => put(w, 1, 0, (k + j) * S16, S16, [m])));
-    ctx.carry = line[n - 1];
+    /* ① 動機、そのあと走り下り */
+    const startDeg = fit(top - 4, 62, 76);
+    const cell = MOTIF.slice(0, Math.min(8, n16)).map((d) => degAbove(scale, startDeg, d));
+    lay(w, 1, 0, cell);
+    if (n16 > cell.length) {
+      const rest = scaleRun(scale, stepScale(scale, cell[cell.length - 1], 1), n16 - cell.length, -1);
+      lay(w, 1, 0, rest, cell.length);
+      ctx.carry = rest[rest.length - 1];
+    } else ctx.carry = cell[cell.length - 1];
   } else if (g === 1) {
-    /* ② トリル。長い音にかけ、残りを走句で埋める */
-    const hold = wide ? quarter * 2 : quarter;
+    /* ② トリル、残りを走句で埋める */
+    const hold = wide ? TPE * 4 : TPE * 2;
     put(w, 1, 0, 0, hold, [top], { orn: "trill" });
     const n = (T - hold) / S16;
     const line = runLine(pcs, scale, stepScale(scale, top, -1), n, -1);
-    for (let k = 0; k < n; k += 4)
-      beam(line.slice(k, k + 4).map((m, j) => put(w, 1, 0, hold + (k + j) * S16, S16, [m])));
+    lay(w, 1, hold, line);
     ctx.carry = line[n - 1];
   } else if (g === 2) {
-    /* ③ 上行して、頂点で伸ばす */
-    const n = wide ? 8 : 2;
-    const up = ladder(pcs, fit(top - 12, 58, 74), n, 1, 55, HIGH);
-    for (let k = 0; k < n; k += 4)
-      beam(up.slice(k, k + 4).map((m, j) => put(w, 1, 0, (k + j) * S16, S16, [m])));
-    put(w, 1, 0, n * S16, T - n * S16, [up[n - 1]]);
-    ctx.carry = up[n - 1];
+    /* ③ 走り下り。高いところから駆け下りる */
+    const line = scaleRun(scale, fit(top + (wide ? 12 : 7), 66, HIGH), n16, -1);
+    lay(w, 1, 0, line);
+    ctx.carry = line[n16 - 1];
   } else {
-    /* ④ 頭にプラルトリラー、そのあと走る */
-    put(w, 1, 0, 0, TPE, [top], { orn: "mordent" });
-    const n = (T - TPE) / S16;
-    const line = runLine(pcs, scale, top, n, i % 2 ? 1 : -1);
-    for (let k = 0; k < n; k += 4)
-      beam(line.slice(k, k + Math.min(4, n - k)).map((m, j) => put(w, 1, 0, TPE + (k + j) * S16, S16, [m])));
-    ctx.carry = line[n - 1];
+    /* ④ 左右交互。動機を4つ（3/8なら3つ）ずつ受け渡す */
+    const chunk = wide ? 4 : 3;
+    const groups = n16 / chunk;
+    const src = wide
+      ? MOTIF.map((d) => degAbove(scale, fit(top - 4, 62, 76), d))
+          .concat(scaleRun(scale, top, 8, -1))
+      : MOTIF.slice(0, 6).map((d) => degAbove(scale, fit(top - 4, 62, 76), d));
+    for (let k = 0; k < groups; k++) {
+      const right = k % 2 === 0;
+      const staff = right ? 1 : 0;
+      const notes = src.slice(k * chunk, k * chunk + chunk)
+        .map((m) => (right ? fit(m, 62, HIGH) : fit(m - 24, 40, 60)));
+      beam(notes.map((m, j) => put(w, staff, 0, (k * chunk + j) * S16, S16, [m])));
+      /* 休んでいるほうの手は、そのぶん休符を置く。
+         3つぶん（付点8分）は書けないので、8分と16分に割る */
+      const rs = right ? 0 : 1, at = k * chunk * S16;
+      if (chunk === 3) { put(w, rs, 0, at, TPE, []); put(w, rs, 0, at + TPE, S16, []); }
+      else put(w, rs, 0, at, chunk * S16, []);
+    }
+    ctx.carry = src[src.length - 1];
+    return w;                              /* この身ぶりでは伴奏を置かない */
   }
 
   if (wide) sparse(w, pcs, b.bassMidi); else laendler(w, pcs, b.bassMidi);
@@ -372,7 +402,7 @@ export const MOVEMENTS = [
   { key: "run", ja: "第1変奏", note: "走句", tempo: 1, gen: { "1787": run1787, "1965": run1965 } },
   { key: "seq", ja: "第2変奏", note: "続進", tempo: 1.02, gen: { "1787": seq1787, "1965": seq1965 } },
   { key: "left", ja: "第3変奏", note: "左手へ", tempo: 1.05, gen: { "1787": left1787, "1965": left1965 } },
-  { key: "varied", ja: "第4変奏", note: "トリルと走り下り", tempo: 1.06, gen: { "1787": varied, "1965": varied } },
+  { key: "varied", ja: "第4変奏", note: "動機・トリル・走り下り・左右交互", tempo: 1.06, gen: { "1787": varied, "1965": varied } },
   { key: "minore", ja: "第5変奏", note: "同主短調", tempo: 1.2, gen: { "1787": minore, "1965": minore } },
   { key: "finale", ja: "終曲", note: "コーダつき", tempo: 0.66, gen: { "1787": fin1787, "1965": fin1965 } },
 ];
