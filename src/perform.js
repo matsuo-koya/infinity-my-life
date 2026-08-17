@@ -86,6 +86,8 @@ export function schedule(list, opts = {}) {
 
           let dur = (e.dur / ticks) * sec;
           dur *= e.stacc === 2 ? 0.34 : e.stacc === 1 ? 0.55 : e.slurL || e.slurJ ? 1.02 : 0.94;
+          /* 最後の小節は鳴らしきる。ここで切ると曲が終わった感じにならない */
+          if (isLast) dur *= 2.4;
 
           const orn = ornaments && e.orn ? realize(e, at, (e.dur / ticks) * sec) : null;
           if (orn) {

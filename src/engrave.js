@@ -533,10 +533,18 @@ function drawVoice(ctx, g, sys, cell, voice, up, alpha, active) {
       return;
     }
 
-    /* 加線と符頭 */
+    /* 加線と符頭。付点は符頭の右、間の中に打つ */
+    const dot = [192, 96, 48, 24, 12].some((base) => Math.abs(e.dur - base * 1.5) < 0.5);
     for (const n of e.notes) {
       ledgers(ctx, g, sys, staff, x, n.step);
       head(ctx, x, yOf(g, sys, staff, n.step), SP, e.dur < 96);   /* 2分音符から白 */
+      if (dot) {
+        /* 線の上の音は、点を1つ上の間へ逃がす */
+        const onLine = (topStep(staff) - n.step) % 2 === 0;
+        ctx.beginPath();
+        ctx.arc(x + SP * 1.15, yOf(g, sys, staff, n.step) - (onLine ? SP * 0.5 : 0), SP * 0.17, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
 
     /* 臨時記号。縦に近いものだけ左へ送る */

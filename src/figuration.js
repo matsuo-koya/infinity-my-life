@@ -490,11 +490,10 @@ function coda(skel, era, scale) {
   const mk = (pcs, bass, last) => {
     const w = newBar(T);
     if (last) {
+      /* 締めの小節。両手とも1小節まるごと伸ばす */
       const top = snap(pcs, 73, 0);
-      put(w, 1, 0, 0, T / 2, [top, top - 12]);
-      put(w, 1, 0, T / 2, T / 2, []);
-      put(w, 0, 0, 0, T / 2, [bass, bass + 12]);
-      put(w, 0, 0, T / 2, T / 2, []);
+      put(w, 1, 0, 0, T, [top, top - 12, snap(pcs, 64, 0)]);
+      put(w, 0, 0, 0, T, [bass, bass + 12]);
       return w;
     }
     const n = T / S16;
@@ -505,7 +504,9 @@ function coda(skel, era, scale) {
     put(w, 0, 0, T / 2, T / 2, pad(pcs, bass));
     return w;
   };
-  return [mk(pI, 45, false), mk(pV, 40, false), mk(pI, 45, false), mk(pI, 45, true)];
+  /* 最後は主和音をまるまる1小節。半分で切ると、そこで曲が終わったように
+     聞こえないので、締めの小節をもう一つ置く */
+  return [mk(pI, 45, false), mk(pV, 40, false), mk(pI, 45, false), mk(pV, 40, false), mk(pI, 45, true)];
 }
 
 /* ─── 楽章の一覧 ───────────────────────────────
@@ -565,7 +566,7 @@ export function build(k, skel, sums) {
   let rows = P.era === "1965" ? [4, 5, 4, 4] : [8, 9];
   if (P.key === "finale") {
     coda(skel, P.era, scale).forEach((w, j) => cells.push({ pos: 17 + j, volta: 0, written: w, coda: true }));
-    rows = P.era === "1965" ? [4, 5, 4, 4, 4] : [8, 9, 4];
+    rows = P.era === "1965" ? [4, 5, 4, 4, 5] : [8, 9, 5];
   }
   return { ...P, cells, rows, keyN: P.minor ? 0 : 3, sharps: !P.minor };
 }
