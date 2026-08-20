@@ -91,7 +91,7 @@ export default function InfinityMyLife() {
   const scoreRef = useRef(null), diceRef = useRef(null), keysRef = useRef(null), wrapRef = useRef(null);
   const recRef = useRef(null), recScoreRef = useRef(null);
   const [pageW, setPageW] = useState(1080);
-  const rafRef = useRef(0), playRef = useRef(null), showBusy = useRef(false);
+  const rafRef = useRef(0), playRef = useRef(null), showBusy = useRef(false), mrRef = useRef(null);
   const sumsRef = useRef([]), cellsRef = useRef([]), mvRef = useRef(null), liveRef = useRef({});
   const cfg = useRef({});
   cfg.current = { inst, temp, a4, barSec, repeat, human, period, room, wet, tape };
@@ -463,33 +463,60 @@ export default function InfinityMyLife() {
     return () => clearInterval(id);
   }, [showing]);
 
+  /* 録画は上演から切り離す。振り続けの輪を回したまま録りはじめられるように */
+  const beginRecording = useCallback(() => {
+    const ac = audio();
+    if (ac.state === "suspended") ac.resume();
+    const fmt = pickFormat();
+    if (!fmt) { setRecNote("この環境では録画できない"); return null; }
+    const stream = recRef.current.captureStream(30);
+    const dest = ac.createMediaStreamDestination();
+    outRef.current.connect(dest);
+    dest.stream.getAudioTracks().forEach((t) => stream.addTrack(t));
+    const chunks = [];
+    const mr = new MediaRecorder(stream, { mimeType: fmt.mime, videoBitsPerSecond: 6_000_000 });
+    mr.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    mr.onstop = () => {
+      outRef.current.disconnect(dest);
+      download(new Blob(chunks, { type: fmt.mime }),
+        `infinity-my-life-${codeOf(liveRef.current.sums) || "show"}.${fmt.ext}`, fmt.mime);
+      setRecNote(`${fmt.ext.toUpperCase()} で保存した`);
+    };
+    mr.start(1000);
+    mrRef.current = mr;
+    setRecording(true);
+    setRecNote(`録画中（${fmt.ext}）`);
+    return mr;
+  }, [audio]);
+
+  const endRecording = useCallback(() => {
+    const mr = mrRef.current;
+    if (mr && mr.state !== "inactive") mr.stop();
+    mrRef.current = null;
+    setRecording(false);
+  }, []);
+
+  /* 録画の入り口。輪が回っていればそれを録り、そうでなければ通しの上演を録る */
+  const onRecord = useCallback(async () => {
+    if (mrRef.current) { endRecording(); if (loopRef.current == null) setShowing(false); return; }
+    if (loopRef.current != null) {
+      setShowing(true);
+      await sleep(150);                       /* こまのキャンバスが出るのを待つ */
+      beginRecording();
+      return;
+    }
+    runShowRef.current(true);
+  }, [beginRecording, endRecording]);
+
   const runShow = useCallback(async (record) => {
     if (showBusy.current) return;
     showBusy.current = true; setShowing(true); setBusy(true);
-    let mr = null, fmt = null;
+    let mr = null;
     try {
       stop(); clearAll(); await sleep(120);
       const ac = audio();
       if (ac.state === "suspended") ac.resume();
-      if (record) {
-        fmt = pickFormat();
-        if (!fmt) setRecNote("この環境では録画できない");
-        else {
-          const stream = recRef.current.captureStream(30);
-          const dest = ac.createMediaStreamDestination();
-          outRef.current.connect(dest);
-          dest.stream.getAudioTracks().forEach((t) => stream.addTrack(t));
-          const chunks = [];
-          mr = new MediaRecorder(stream, { mimeType: fmt.mime, videoBitsPerSecond: 6_000_000 });
-          mr.ondataavailable = (e) => e.data.size && chunks.push(e.data);
-          mr.onstop = () => {
-            outRef.current.disconnect(dest);
-            download(new Blob(chunks, { type: fmt.mime }), `infinity-my-life-${codeOf(liveRef.current.sums) || "show"}.${fmt.ext}`, fmt.mime);
-            setRecNote(`${fmt.ext.toUpperCase()} で保存した`);
-          };
-          mr.start(1000); setRecording(true); setRecNote(`録画中（${fmt.ext}）`);
-        }
-      }
+      if (record) { await sleep(150); mr = beginRecording(); }
       setMv(0);
       await sleep(1400);
       for (let i = 0; i < BARS; i++) { await tumbleOnce(); await sleep(220); }
@@ -497,11 +524,12 @@ export default function InfinityMyLife() {
       await runSet(() => showBusy.current);
       await sleep(1600);
     } finally {
-      if (mr && mr.state !== "inactive") mr.stop();
-      setRecording(false); setBusy(false); showBusy.current = false;
+      if (mr) endRecording();
+      setBusy(false); showBusy.current = false;
       if (!record) setShowing(false);
     }
-  }, [audio, stop, clearAll, tumbleOnce, runSet]);
+  }, [audio, stop, clearAll, tumbleOnce, runSet, beginRecording, endRecording]);
+  const runShowRef = useRef(runShow); runShowRef.current = runShow;
 
   useEffect(() => () => { if (playRef.current) clearInterval(playRef.current.timer); }, []);
 
@@ -676,7 +704,10 @@ export default function InfinityMyLife() {
               主題から終曲まで通す
             </button>
             <button onClick={() => runShow(false)} disabled={busy} style={S.btn(showing && !recording, busy)}>上演</button>
-            <button onClick={() => runShow(true)} disabled={busy} style={S.btn(recording, busy)}>● 録画</button>
+            <button onClick={onRecord} disabled={busy && !recording && loopMv == null}
+              style={S.btn(recording, busy && !recording && loopMv == null)}>
+              {recording ? "■ 録画を止める" : "● 録画"}
+            </button>
             <button onClick={() => { setLoopMv(null); setPerpetual((v) => !v); }}
               disabled={(busy && !perpetual) || loopMv != null}
               style={S.btn(perpetual, (busy && !perpetual) || loopMv != null)}>永久機関</button>
